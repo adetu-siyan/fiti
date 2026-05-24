@@ -1,0 +1,103 @@
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python build
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =========================
+# FastAPI / Backend
+# =========================
+uploads/
+temp/
+cache/
+reports/
+generated_reports/
+
+# SQLite / DB
+*.db
+*.sqlite3
+
+# AI / Model Cache
+models/
+model_cache/
+hf_cache/
+
+# =========================
+# Node / Frontend
+# =========================
+node_modules/
+dist/
+build/
+
+# Vite
+.vite/
+
+# Package Managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# VSCode
+# =========================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# =========================
+# IDEs
+# =========================
+.idea/
+
+# =========================
+# Misc
+# =========================
+*.tmp
+*.temp
+*.bak
+
+# Generated exports
+*.csv
+*.xlsx
+*.parquet
+*.pdf
+
+# Ignore large statement dumps
+statements/
+datasets/
