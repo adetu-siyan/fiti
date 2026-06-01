@@ -96,13 +96,24 @@ function App() {
       setClassifications(response.data.classifications)
 
     } catch (err) {
-      console.error(err)
-      setError("Failed to analyze statement.")
+      console.error("FITI ANALYSIS ERROR:", err)
+
+      const errorMessage =
+        err?.response?.data?.detail?.error ||
+        err?.response?.data?.detail?.message ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Failed to analyze statement."
+
+      setError(
+        typeof errorMessage === "string"
+          ? errorMessage
+          : JSON.stringify(errorMessage)
+      )
     } finally {
       setLoading(false)
     }
   }
-
 
   const handleFullReport = async () => {
 
