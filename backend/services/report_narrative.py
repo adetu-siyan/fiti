@@ -58,15 +58,25 @@ def build_deep_insights(eda: dict, risk_analysis: dict, behavior_analysis: list)
     risks              = risk_analysis.get("risks", [])
     spending_ratio     = risk_analysis.get("spending_ratio", 0)
 
-    total_income = next(
-        (i["value"] for i in behavior_analysis if i["metric"] == "total_income"), 0
-    )
-    total_spending = next(
-        (i["value"] for i in behavior_analysis if i["metric"] == "total_spending"), 0
-    )
-    avg_spending = next(
-        (i["value"] for i in behavior_analysis if i["metric"] == "average_spending"), 0
-    )
+    # Safely extract values from behavior_analysis
+    total_income = 0
+    total_spending = 0
+    avg_spending = 0
+    
+    try:
+        if behavior_analysis and isinstance(behavior_analysis, list):
+            total_income = next(
+                (i["value"] for i in behavior_analysis if i.get("metric") == "total_income"), 0
+            )
+            total_spending = next(
+                (i["value"] for i in behavior_analysis if i.get("metric") == "total_spending"), 0
+            )
+            avg_spending = next(
+                (i["value"] for i in behavior_analysis if i.get("metric") == "average_spending"), 0
+            )
+    except (TypeError, KeyError, StopIteration):
+        # If behavior_analysis is malformed, use defaults
+        pass
 
     insights = {
         "currency":      currency,
@@ -83,7 +93,7 @@ def build_deep_insights(eda: dict, risk_analysis: dict, behavior_analysis: list)
         "recommendations": []
     }
 
-    # ─ PERIOD ────────────────────────────────────────────────────────
+    # ─ PERIOD ───────────────────────────────────────────────────────
     insights["period"] = {
         "monthly_count":      metadata.get("monthly_count", len(monthly_flow)),
         "date_range_days":    metadata.get("date_range_days", 0),
@@ -200,7 +210,7 @@ def build_deep_insights(eda: dict, risk_analysis: dict, behavior_analysis: list)
             "all_dates":    [a["date"] for a in anomalies[:10]]
         }
 
-    # ── DAY OF WEEK PATTERN ──────────────────────────────────────────
+    # ── DAY OF WEEK PATTERN ─────────────────────────────────────────
     if day_of_week:
         worst_day        = max(day_of_week, key=lambda x: x["total_spending"])
         best_day         = min(day_of_week, key=lambda x: x["total_spending"])
@@ -491,8 +501,42 @@ async def generate_narrative(
     eda         = sanitize_eda_narrations(eda)
     safe_charts = build_safe_charts_set(eda)
 
+    # Initialize insights with default structure
+    insights = {
+        "currency": currency,
+        "period": {},
+        "overall": {
+            "total_income": 0,
+            "total_spending": 0,
+            "net_position": 0,
+            "avg_transaction": 0,
+            "spending_ratio": 0,
+            "financial_health": "unknown"
+        },
+        "monthly": {},
+        "categories": {},
+        "recurring": {},
+        "anomalies": {},
+        "day_pattern": {},
+        "quarterly": {},
+        "mom_trend": {},
+        "risks": {},
+        "recommendations": []
+    }
+
     try:
-        insights = build_deep_insights(eda, risk_analysis, behavior_analysis)
+        # Try to build deep insights
+        built_insights = build_deep_insights(eda, risk_analysis, behavior_analysis)
+        
+        # Merge built insights into default structure
+        for key in built_insights:
+            if key in insights:
+                if isinstance(insights[key], dict) and isinstance(built_insights[key], dict):
+                    insights[key].update(built_insights[key])
+                else:
+                    insights[key] = built_insights[key]
+            else:
+                insights[key] = built_insights[key]
         
         # ✅ OVERRIDE WITH EXECUTIVE SUMMARY IF PROVIDED
         if executive_summary and isinstance(executive_summary, dict):
@@ -515,7 +559,7 @@ async def generate_narrative(
         print("BUILD_DEEP_INSIGHTS ERROR:", e)
         import traceback
         traceback.print_exc()
-        insights = {"currency": currency}
+        # Keep the default insights structure even if build_deep_insights fails
     
     chart_constraints = build_chart_constraints(eda)
 
@@ -524,11 +568,11 @@ async def generate_narrative(
     total_transactions = metadata.get("total_transactions", 0)
     date_range_days    = metadata.get("date_range_days", 0)
 
-    # Get the verified numbers for the prompt
-    verified_income = insights["overall"]["total_income"]
-    verified_spending = insights["overall"]["total_spending"]
-    verified_net = insights["overall"]["net_position"]
-    verified_ratio = insights["overall"]["spending_ratio"]
+    # Get the verified numbers for the prompt (with safe defaults)
+    verified_income = insights.get("overall", {}).get("total_income", 0)
+    verified_spending = insights.get("overall", {}).get("total_spending", 0)
+    verified_net = insights.get("overall", {}).get("net_position", 0)
+    verified_ratio = insights.get("overall", {}).get("spending_ratio", 0)
 
     prompt = f"""
 You are writing a private financial intelligence report for one specific person.
@@ -643,7 +687,6 @@ Each item must be exactly one of:
             "eda":   eda,
             "error": str(e)
         }
-
 
 
 
