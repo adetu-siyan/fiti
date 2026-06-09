@@ -1,63 +1,79 @@
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { FiMessageCircle, FiX, FiSend } from "react-icons/fi"
+import { FiSend, FiUser } from "react-icons/fi"
 
+const SUGGESTIONS = [
+  "What did I spend the most on?",
+  "Was last month a good month?",
+  "Where is my money going?",
+  "Am I doing okay financially?",
+]
 
-export default function ChatBot({
+const THINKING_PHRASES = [
+  "Analyzing your data",
+  "Running the numbers",
+  "Checking your statement",
+  "Scanning your patterns",
+]
+
+export default function InlineChat({
   eda,
   riskAnalysis,
   behaviorAnalysis,
-  currency
+  currency,
+  onChartQuestion,
 }) {
-
-  const [open, setOpen] = useState(false)
-  const [message, setMessage] = useState("")
-  const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [message, setMessage]   = useState("")
+  const [history, setHistory]   = useState([])
+  const [loading, setLoading]   = useState(false)
   const [streaming, setStreaming] = useState("")
-  const bottomRef = useRef(null)
-
+  const [thinking, setThinking] = useState("")
+  const bottomRef               = useRef(null)
+  const inputRef                = useRef(null)
 
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" })
-    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [history, streaming, loading])
 
+  // expose a method for charts to inject questions
+  useEffect(() => {
+    if (onChartQuestion) {
+      onChartQuestion((chartId, chartTitle) => {
+        const q = `[CHART: ${chartId}] Explain this chart to me: ${chartTitle}`
+        setMessage(q)
+        inputRef.current?.focus()
+      })
+    }
+  }, [onChartQuestion])
 
-  const sendMessage = async () => {
+  const sendMessage = async (overrideMessage) => {
+    const userMessage = (overrideMessage || message).trim()
+    if (!userMessage || loading) return
 
-    if (!message.trim() || loading) return
-
-    const userMessage = message.trim()
     setMessage("")
     setStreaming("")
+    setThinking(THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)])
 
-    const newHistory = [
-      ...history,
-      { role: "user", content: userMessage }
-    ]
-
+    const newHistory = [...history, { role: "user", content: userMessage }]
     setHistory(newHistory)
     setLoading(true)
 
     try {
-
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"}/chat/message`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          conversation_history: history,
-          // ✅ Provide defaults if undefined to prevent 422 errors
-          eda: eda || {},
-          risk_analysis: riskAnalysis || {},
-          behavior_analysis: behaviorAnalysis || [],
-          currency: currency || ""
-        })
-      })
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"}/chat/message`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message:              userMessage,
+            conversation_history: history,
+            eda:                  eda || {},
+            risk_analysis:        riskAnalysis || {},
+            behavior_analysis:    behaviorAnalysis || [],
+            currency:             currency || "₦",
+          }),
+        }
+      )
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -65,50 +81,35 @@ export default function ChatBot({
         throw new Error(`Stream request failed: ${response.status}`)
       }
 
-      const reader = response.body.getReader()
+      const reader  = response.body.getReader()
       const decoder = new TextDecoder()
       let fullResponse = ""
 
       setLoading(false)
+      setThinking("")
 
       while (true) {
-
         const { done, value } = await reader.read()
-
         if (done) break
-
         const chunk = decoder.decode(value, { stream: true })
         fullResponse += chunk
         setStreaming(fullResponse)
       }
 
-      setHistory([
-        ...newHistory,
-        {
-          role: "assistant",
-          content: fullResponse
-        }
-      ])
-
+      setHistory([...newHistory, { role: "assistant", content: fullResponse }])
       setStreaming("")
 
     } catch (err) {
-
       console.error(err)
       setLoading(false)
+      setThinking("")
       setStreaming("")
-
       setHistory([
         ...newHistory,
-        {
-          role: "assistant",
-          content: "Something went wrong. Try again."
-        }
+        { role: "assistant", content: "Something went wrong. Try again." },
       ])
-
     }
   }
-
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -117,163 +118,196 @@ export default function ChatBot({
     }
   }
 
-
   return (
+    <div className="mt-16 border-t border-zinc-800 pt-10">
 
-    <div className="fixed bottom-8 right-8 z-50">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Ask FITI</h3>
+          <p className="text-zinc-500 text-xs mt-0.5">
+            Your AI financial advisor — ask anything about your data
+          </p>
+        </div>
+        <div
+          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs"
+          style={{ background: "rgba(208,139,91,0.1)", color: "#d08b5b", border: "1px solid rgba(208,139,91,0.2)" }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          Online
+        </div>
+      </div>
 
-      <AnimatePresence>
-        {open && (
+      {/* Conversation */}
+      <div className="space-y-6 min-h-24">
 
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.3 }}
-            className="absolute bottom-20 right-0 w-96 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden"
-          >
-
-            {/* HEADER */}
-
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-
-              <div>
-                <p className="font-semibold text-sm">FITI AI</p>
-                <p className="text-zinc-500 text-xs">Ask me about your transactions</p>
-              </div>
-
+        {/* Empty state suggestions */}
+        {history.length === 0 && !streaming && (
+          <div className="grid grid-cols-2 gap-3">
+            {SUGGESTIONS.map((s, i) => (
               <button
-                onClick={() => setOpen(false)}
-                className="text-zinc-500 hover:text-white transition"
+                key={i}
+                onClick={() => sendMessage(s)}
+                className="text-left text-sm px-4 py-3 rounded-2xl transition-all duration-200"
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  color: "#a1a1aa",
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.07)"
+                  e.currentTarget.style.color = "#ffffff"
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.04)"
+                  e.currentTarget.style.color = "#a1a1aa"
+                }}
               >
-                <FiX size={18} />
+                {s}
               </button>
-
-            </div>
-
-
-            {/* MESSAGES */}
-
-            <div className="h-80 overflow-y-auto px-4 py-4 space-y-4">
-
-              {history.length === 0 && !streaming && (
-
-                <div className="text-center mt-8">
-                  <p className="text-zinc-500 text-sm">
-                    Hey! Ask me anything about your finances.
-                  </p>
-                  <div className="mt-4 space-y-2">
-                    {[
-                      "What did I spend the most on?",
-                      "Was April a good month?",
-                      "Where is my money going?"
-                    ].map((suggestion, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setMessage(suggestion)}
-                        className="block w-full text-left text-xs text-zinc-400 bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-xl transition"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {history.map((msg, i) => (
-
-                <div
-                  key={i}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-
-                  <div
-                    className={`max-w-xs px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-white text-black rounded-br-sm"
-                        : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
-
-                </div>
-              ))}
-
-              {/* STREAMING RESPONSE */}
-
-              {streaming && (
-
-                <div className="flex justify-start">
-                  <div className="max-w-xs px-4 py-3 rounded-2xl rounded-bl-sm bg-zinc-800 text-zinc-200 text-sm leading-relaxed">
-                    {streaming}
-                    <span className="inline-block w-1.5 h-3.5 bg-zinc-400 ml-0.5 animate-pulse rounded-sm" />
-                  </div>
-                </div>
-              )}
-
-              {/* LOADING DOTS */}
-
-              {loading && !streaming && (
-
-                <div className="flex justify-start">
-                  <div className="bg-zinc-800 px-4 py-3 rounded-2xl rounded-bl-sm">
-                    <div className="flex gap-1">
-                      <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={bottomRef} />
-
-            </div>
-
-
-            {/* INPUT */}
-
-            <div className="px-4 py-3 border-t border-zinc-800 flex gap-2">
-
-              <input
-                type="text"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask about your finances..."
-                className="flex-1 bg-zinc-800 text-white text-sm px-4 py-2.5 rounded-xl outline-none placeholder-zinc-500"
-              />
-
-              <button
-                onClick={sendMessage}
-                disabled={!message.trim() || loading}
-                className="bg-white text-black p-2.5 rounded-xl hover:scale-105 transition disabled:opacity-40"
-              >
-                <FiSend size={16} />
-              </button>
-
-            </div>
-
-          </motion.div>
+            ))}
+          </div>
         )}
-      </AnimatePresence>
 
+        {/* Messages */}
+        {history.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            {msg.role === "assistant" && (
+              <div
+                className="flex-none w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+                style={{ background: "rgba(208,139,91,0.15)", color: "#d08b5b" }}
+              >
+                F
+              </div>
+            )}
 
-      {/* TOGGLE BUTTON */}
+            <div
+              className={`max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                msg.role === "user"
+                  ? "rounded-tr-sm"
+                  : "rounded-tl-sm"
+              }`}
+              style={
+                msg.role === "user"
+                  ? { background: "rgba(255,255,255,0.08)", color: "#ffffff" }
+                  : { background: "rgba(255,255,255,0.04)", color: "#d4d4d8", border: "1px solid rgba(255,255,255,0.06)" }
+              }
+            >
+              {msg.content}
+            </div>
 
-      <motion.button
-        onClick={() => setOpen(!open)}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="bg-white text-black p-4 rounded-full shadow-lg"
-      >
-        {open ? <FiX size={22} /> : <FiMessageCircle size={22} />}
-      </motion.button>
+            {msg.role === "user" && (
+              <div
+                className="flex-none w-7 h-7 rounded-full flex items-center justify-center mt-0.5"
+                style={{ background: "rgba(255,255,255,0.08)" }}
+              >
+                <FiUser size={13} color="#a1a1aa" />
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Thinking indicator */}
+        {loading && thinking && (
+          <div className="flex gap-3 justify-start">
+            <div
+              className="flex-none w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+              style={{ background: "rgba(208,139,91,0.15)", color: "#d08b5b" }}
+            >
+              F
+            </div>
+            <div
+              className="px-4 py-3 rounded-2xl rounded-tl-sm text-sm"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="flex items-center gap-2 text-zinc-500">
+                <span>{thinking}</span>
+                <span className="flex gap-1">
+                  {[0, 150, 300].map(delay => (
+                    <span
+                      key={delay}
+                      className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce"
+                      style={{ animationDelay: `${delay}ms` }}
+                    />
+                  ))}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Streaming response */}
+        {streaming && (
+          <div className="flex gap-3 justify-start">
+            <div
+              className="flex-none w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
+              style={{ background: "rgba(208,139,91,0.15)", color: "#d08b5b" }}
+            >
+              F
+            </div>
+            <div
+              className="max-w-2xl px-4 py-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed"
+              style={{ background: "rgba(255,255,255,0.04)", color: "#d4d4d8", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              {streaming}
+              <span
+                className="inline-block w-0.5 h-3.5 ml-0.5 animate-pulse rounded-sm"
+                style={{ background: "#d08b5b" }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="mt-6 flex gap-3 items-end">
+        <textarea
+          ref={inputRef}
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask about your finances..."
+          rows={1}
+          className="flex-1 text-sm px-4 py-3 rounded-2xl outline-none resize-none"
+          style={{
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "#ffffff",
+          }}
+          onInput={e => {
+            e.target.style.height = "auto"
+            e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"
+          }}
+        />
+        <button
+          onClick={() => sendMessage()}
+          disabled={!message.trim() || loading}
+          className="flex-none p-3 rounded-2xl transition-all duration-200 disabled:opacity-40"
+          style={{ background: "#d08b5b", color: "#ffffff" }}
+        >
+          <FiSend size={16} />
+        </button>
+      </div>
+
+      {/* Disclaimer */}
+      <p className="text-zinc-600 text-xs text-center mt-4">
+        FITI is an AI agent and can sometimes make mistakes. Verify important financial decisions independently.
+      </p>
 
     </div>
   )
 }
+
+
+
+
+
+
 
 
 
@@ -332,15 +366,18 @@ export default function ChatBot({
 //         body: JSON.stringify({
 //           message: userMessage,
 //           conversation_history: history,
-//           eda: eda,
-//           risk_analysis: riskAnalysis,
-//           behavior_analysis: behaviorAnalysis,
-//           currency: currency
+//           // ✅ Provide defaults if undefined to prevent 422 errors
+//           eda: eda || {},
+//           risk_analysis: riskAnalysis || {},
+//           behavior_analysis: behaviorAnalysis || [],
+//           currency: currency || ""
 //         })
 //       })
 
 //       if (!response.ok) {
-//         throw new Error("Stream request failed")
+//         const errorText = await response.text()
+//         console.error("Chat API Error:", errorText)
+//         throw new Error(`Stream request failed: ${response.status}`)
 //       }
 
 //       const reader = response.body.getReader()
@@ -552,4 +589,7 @@ export default function ChatBot({
 //     </div>
 //   )
 // }
+
+
+
 
