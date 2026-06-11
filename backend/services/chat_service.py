@@ -377,6 +377,7 @@ async def stream_chat_with_fiti(
     except Exception as e:
         print("CHAT STREAM ERROR:", e)
         yield "Sorry, I ran into an issue. Try asking again."
+
     # try:
     #     stream = groq_client.chat.completions.create(
     #         model=LLAMA_70B_MODEL,
